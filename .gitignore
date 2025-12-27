@@ -1,0 +1,26 @@
+# Variables de entorno (contiene contraseñas)
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+venv/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+
+# Docker
+*.log
+
+# Uploads (archivos de usuarios)
+uploads/*
+!uploads/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
