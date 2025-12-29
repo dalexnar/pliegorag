@@ -7,3 +7,4 @@ from app.services.embedding_service import (
     buscar_normativa,
     eliminar_chunks_pliego
 )
+from app.services.documento_service import generar_checklist_completo, DOCUMENTOS_BASE

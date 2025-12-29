@@ -57,7 +57,8 @@ def hacer_pregunta(
         respuesta=resultado["respuesta"],
         tokens_prompt=resultado["tokens_prompt"],
         tokens_respuesta=resultado["tokens_respuesta"],
-        tiempo_ms=resultado["tiempo_ms"]
+        tiempo_ms=resultado["tiempo_ms"],
+        fuentes=resultado.get("fuentes", [])
     )
 
 

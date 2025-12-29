@@ -18,6 +18,7 @@ class Pliego(Base):
     texto_completo = Column(Text)
     texto_tokens = Column(Integer)
     datos_extraidos = Column(JSON)
+    checklist_documentos = Column(JSON)
     estado = Column(
         Enum("procesando", "listo", "error", name="estado_pliego"),
         default="procesando"

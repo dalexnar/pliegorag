@@ -32,15 +32,23 @@ def inicializar_servicios():
         )
 
 def guardar_chunks(pliego_id: int, chunks: List[dict]):
-    """Guarda chunks de un pliego en ChromaDB."""
+    """Guarda chunks de un pliego en ChromaDB con metadata de página y sección."""
     inicializar_servicios()
-    
+
     textos = [c["texto"] for c in chunks]
     ids = [f"pliego_{pliego_id}_chunk_{c['id']}" for c in chunks]
-    metadatas = [{"pliego_id": pliego_id, "chunk_id": c["id"]} for c in chunks]
-    
+    metadatas = [
+        {
+            "pliego_id": pliego_id,
+            "chunk_id": c["id"],
+            "page": c.get("page", 1),
+            "section": c.get("section", "sin_seccion")
+        }
+        for c in chunks
+    ]
+
     embeddings = modelo_embeddings.encode(textos).tolist()
-    
+
     coleccion_pliegos.add(
         documents=textos,
         embeddings=embeddings,
@@ -48,19 +56,32 @@ def guardar_chunks(pliego_id: int, chunks: List[dict]):
         metadatas=metadatas
     )
 
-def buscar_chunks_relevantes(pregunta: str, pliego_id: int, n_resultados: int = 5) -> List[str]:
-    """Busca chunks relevantes para una pregunta."""
+def buscar_chunks_relevantes(pregunta: str, pliego_id: int, n_resultados: int = 5) -> List[dict]:
+    """Busca chunks relevantes para una pregunta, retornando texto y metadata."""
     inicializar_servicios()
-    
+
     embedding_pregunta = modelo_embeddings.encode([pregunta]).tolist()
-    
+
     resultados = coleccion_pliegos.query(
         query_embeddings=embedding_pregunta,
         n_results=n_resultados,
         where={"pliego_id": pliego_id}
     )
-    
-    return resultados["documents"][0] if resultados["documents"] else []
+
+    if not resultados["documents"] or not resultados["documents"][0]:
+        return []
+
+    # Retornar lista de dicts con texto y metadata
+    chunks_con_metadata = []
+    for i, texto in enumerate(resultados["documents"][0]):
+        metadata = resultados["metadatas"][0][i] if resultados.get("metadatas") else {}
+        chunks_con_metadata.append({
+            "texto": texto,
+            "page": metadata.get("page", 1),
+            "section": metadata.get("section", "sin_seccion")
+        })
+
+    return chunks_con_metadata
 
 def buscar_normativa(pregunta: str, n_resultados: int = 3) -> List[str]:
     """Busca normativa relevante para una pregunta."""

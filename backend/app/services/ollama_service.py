@@ -23,6 +23,7 @@ def preguntar_ollama(pliego_id: int, pregunta: str, texto_completo: str = None) 
         "tokens_respuesta": 0,
         "tiempo_ms": 0,
         "modelo_usado": "",
+        "fuentes": [],
         "error": None
     }
 
@@ -34,10 +35,22 @@ def preguntar_ollama(pliego_id: int, pregunta: str, texto_completo: str = None) 
             modelo = MODELO_COMPLEJO
             chunks = buscar_chunks_relevantes(pregunta, pliego_id, n_resultados=3)
             normativa = buscar_normativa(pregunta, n_resultados=2)
-            
-            contexto_pliego = "\n\n".join([c[:1000] for c in chunks]) if chunks else texto_completo[:3000] if texto_completo else ""
+
+            # Extraer fuentes de los chunks
+            fuentes = []
+            if chunks:
+                for chunk in chunks:
+                    fuente = {
+                        "page": chunk.get("page", 1),
+                        "section": chunk.get("section", "sin_seccion")
+                    }
+                    if fuente not in fuentes:
+                        fuentes.append(fuente)
+                resultado["fuentes"] = fuentes
+
+            contexto_pliego = "\n\n".join([c["texto"][:1000] for c in chunks]) if chunks else texto_completo[:3000] if texto_completo else ""
             contexto_legal = "\n\n".join(normativa) if normativa else ""
-            
+
             if contexto_legal:
                 contexto = f"EXTRACTOS DEL PLIEGO:\n{contexto_pliego}\n\nNORMATIVA APLICABLE:\n{contexto_legal}"
             else:

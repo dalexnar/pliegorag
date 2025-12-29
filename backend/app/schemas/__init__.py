@@ -7,4 +7,8 @@ from app.schemas.pliego import (
     ConversacionResponse,
     ResumenRequest,
     ResumenResponse,
+    ChecklistRequest,
+    ChecklistResponse,
+    DocumentoRequerido,
+    ReferenciaDocumento,
 )
