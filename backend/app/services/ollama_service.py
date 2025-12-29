@@ -1,43 +1,65 @@
 import httpx
 import time
 from app.config import settings
+from app.services.embedding_service import buscar_chunks_relevantes, buscar_normativa
 
+MODELO_SIMPLE = "llama3.2:latest"
+MODELO_COMPLEJO = "llama3.1:latest"
 
-def preguntar_ollama(texto_pliego: str, pregunta: str) -> dict:
-    """
-    Envía una pregunta a Ollama con el contexto del pliego.
-    Retorna dict con respuesta, tokens, tiempo, y error si hay.
-    """
+def es_pregunta_simple(pregunta: str) -> bool:
+    """Detecta si es pregunta simple o necesita análisis."""
+    palabras_simples = [
+        "qué es", "que es", "definición", "definicion",
+        "significa", "concepto", "explica", "explicame"
+    ]
+    pregunta_lower = pregunta.lower()
+    return any(p in pregunta_lower for p in palabras_simples)
+
+def preguntar_ollama(pliego_id: int, pregunta: str, texto_completo: str = None) -> dict:
+    """Envía pregunta a Ollama usando chunks relevantes."""
     resultado = {
         "respuesta": "",
         "tokens_prompt": 0,
         "tokens_respuesta": 0,
         "tiempo_ms": 0,
+        "modelo_usado": "",
         "error": None
     }
 
-    prompt = f"""Eres un experto en contratación estatal colombiana. 
-Analiza el siguiente pliego de condiciones y responde la pregunta del usuario.
-
-PLIEGO DE CONDICIONES:
-{texto_pliego}
-
-PREGUNTA DEL USUARIO:
-{pregunta}
-
-Responde de forma clara y concisa, citando las partes relevantes del pliego cuando sea posible."""
-
     try:
+        if es_pregunta_simple(pregunta):
+            modelo = MODELO_SIMPLE
+            contexto = ""
+        else:
+            modelo = MODELO_COMPLEJO
+            chunks = buscar_chunks_relevantes(pregunta, pliego_id, n_resultados=3)
+            normativa = buscar_normativa(pregunta, n_resultados=2)
+            
+            contexto_pliego = "\n\n".join([c[:1000] for c in chunks]) if chunks else texto_completo[:3000] if texto_completo else ""
+            contexto_legal = "\n\n".join(normativa) if normativa else ""
+            
+            if contexto_legal:
+                contexto = f"EXTRACTOS DEL PLIEGO:\n{contexto_pliego}\n\nNORMATIVA APLICABLE:\n{contexto_legal}"
+            else:
+                contexto = f"EXTRACTOS DEL PLIEGO:\n{contexto_pliego}"
+
+        resultado["modelo_usado"] = modelo
+
+        prompt = f"""Eres un experto en contratación estatal colombiana.
+Analiza la información y responde la pregunta del usuario.
+
+{contexto}
+
+PREGUNTA: {pregunta}
+
+Responde de forma clara y concisa."""
+
         inicio = time.time()
 
-        with httpx.Client(timeout=120.0) as client:
+        with httpx.Client(timeout=300.0) as client:
             response = client.post(
                 f"{settings.OLLAMA_HOST}/api/generate",
-                json={
-                    "model": settings.OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "stream": False
-                }
+                json={"model": modelo, "prompt": prompt, "stream": False}
             )
             response.raise_for_status()
             data = response.json()
@@ -60,42 +82,33 @@ Responde de forma clara y concisa, citando las partes relevantes del pliego cuan
 
 
 def generar_resumen(texto_pliego: str) -> dict:
-    """
-    Genera una ficha resumen estructurada del pliego.
-    """
-    resultado = {
-        "ficha": {},
-        "error": None
-    }
+    """Genera ficha resumen estructurada del pliego."""
+    resultado = {"ficha": {}, "error": None}
 
     prompt = f"""Eres un experto en contratación estatal colombiana.
-Analiza el siguiente pliego de condiciones y extrae la información clave.
+Analiza el siguiente pliego y extrae la información clave.
 
-PLIEGO DE CONDICIONES:
-{texto_pliego}
+PLIEGO:
+{texto_pliego[:10000]}
 
-Responde ÚNICAMENTE con un JSON válido (sin texto adicional) con esta estructura:
+Responde ÚNICAMENTE con un JSON válido:
 {{
-    "numero_proceso": "número o código del proceso",
-    "entidad": "nombre de la entidad contratante",
-    "objeto": "objeto del contrato (resumido)",
+    "numero_proceso": "número del proceso",
+    "entidad": "nombre de la entidad",
+    "objeto": "objeto del contrato",
     "presupuesto": "presupuesto oficial",
-    "fecha_cierre": "fecha límite para presentar ofertas",
+    "fecha_cierre": "fecha límite",
     "experiencia_requerida": "requisitos de experiencia",
     "garantias": "garantías solicitadas",
     "criterios_evaluacion": "criterios y ponderación",
-    "observaciones": "puntos importantes a tener en cuenta"
+    "observaciones": "puntos importantes"
 }}"""
 
     try:
-        with httpx.Client(timeout=120.0) as client:
+        with httpx.Client(timeout=300.0) as client:
             response = client.post(
                 f"{settings.OLLAMA_HOST}/api/generate",
-                json={
-                    "model": settings.OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "stream": False
-                }
+                json={"model": MODELO_COMPLEJO, "prompt": prompt, "stream": False}
             )
             response.raise_for_status()
             data = response.json()

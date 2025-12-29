@@ -21,7 +21,7 @@ def hacer_pregunta(
     datos: PreguntaRequest,
     db: Session = Depends(get_db)
 ):
-    """Hace una pregunta sobre un pliego usando Ollama."""
+    """Hace una pregunta sobre un pliego usando chunks relevantes."""
 
     pliego = db.query(Pliego).filter(Pliego.id == datos.pliego_id).first()
     if not pliego:
@@ -30,11 +30,12 @@ def hacer_pregunta(
     if pliego.estado != "listo":
         raise HTTPException(status_code=400, detail="El pliego aún no está procesado")
 
-    if not pliego.texto_completo:
-        raise HTTPException(status_code=400, detail="El pliego no tiene texto extraído")
-
-    # Preguntar a Ollama
-    resultado = preguntar_ollama(pliego.texto_completo, datos.pregunta)
+    # Preguntar a Ollama (ahora usa chunks)
+    resultado = preguntar_ollama(
+        pliego_id=pliego.id,
+        pregunta=datos.pregunta,
+        texto_completo=pliego.texto_completo
+    )
 
     if resultado["error"]:
         raise HTTPException(status_code=500, detail=resultado["error"])
@@ -44,7 +45,7 @@ def hacer_pregunta(
         pliego_id=pliego.id,
         pregunta=datos.pregunta,
         respuesta=resultado["respuesta"],
-        modelo_usado="llama3.1:latest",
+        modelo_usado=resultado.get("modelo_usado", "qwen2.5:32b"),
         tokens_prompt=resultado["tokens_prompt"],
         tokens_respuesta=resultado["tokens_respuesta"],
         tiempo_respuesta_ms=resultado["tiempo_ms"]

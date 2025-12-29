@@ -7,7 +7,7 @@ from typing import List
 from app.database import get_db
 from app.models import Pliego
 from app.schemas import PliegoResponse, PliegoDetalle
-from app.services import extraer_texto_pdf
+from app.services import extraer_texto_pdf, dividir_en_chunks, guardar_chunks, eliminar_chunks_pliego
 
 router = APIRouter(prefix="/api/pliegos", tags=["pliegos"])
 
@@ -19,7 +19,7 @@ async def subir_pliego(
     archivo: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    """Sube un PDF y extrae su texto."""
+    """Sube un PDF, extrae texto y genera chunks."""
     
     if not archivo.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Solo se permiten archivos PDF")
@@ -54,7 +54,16 @@ async def subir_pliego(
     else:
         pliego.texto_completo = resultado["texto_completo"]
         pliego.num_paginas = resultado["num_paginas"]
-        pliego.estado = "listo"
+        
+        # Generar chunks y guardar en ChromaDB
+        try:
+            chunks = dividir_en_chunks(resultado["texto_completo"])
+            guardar_chunks(pliego.id, chunks)
+            pliego.texto_tokens = len(resultado["texto_completo"].split())
+            pliego.estado = "listo"
+        except Exception as e:
+            pliego.estado = "error"
+            pliego.error_mensaje = f"Error al generar chunks: {str(e)}"
 
     db.commit()
     db.refresh(pliego)
@@ -79,7 +88,7 @@ def obtener_pliego(pliego_id: int, db: Session = Depends(get_db)):
 
 @router.delete("/{pliego_id}")
 def eliminar_pliego(pliego_id: int, db: Session = Depends(get_db)):
-    """Elimina un pliego y su archivo."""
+    """Elimina un pliego, su archivo y sus chunks."""
     pliego = db.query(Pliego).filter(Pliego.id == pliego_id).first()
     if not pliego:
         raise HTTPException(status_code=404, detail="Pliego no encontrado")
@@ -87,6 +96,12 @@ def eliminar_pliego(pliego_id: int, db: Session = Depends(get_db)):
     # Eliminar archivo físico
     if os.path.exists(pliego.ruta_archivo):
         os.remove(pliego.ruta_archivo)
+
+    # Eliminar chunks de ChromaDB
+    try:
+        eliminar_chunks_pliego(pliego_id)
+    except:
+        pass
 
     # Eliminar de BD
     db.delete(pliego)
